@@ -7,29 +7,34 @@ use App\Models\Exercise;
 
 class ExerciseController extends Controller
 {
-    //
     public function index()
     {
-        $userId = auth()->user()->id;
-        $exercises = Exercise::where('user_id,', $userId);
-        if (auth()->user()->role == 'admin') {
-            $exercises = Exercise::all();
+        try {
+            $userId = auth()->user()->id;
+            if (auth()->user()->role == 'admin') {
+                $exercises = Exercise::all();
+            } else {
+                $exercises = Exercise::where('user_id', $userId)->get();
+            }
+            return response()->json(['exercises' => $exercises], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error fetching exercises: ' . $e->getMessage()], 500);
         }
-
-        return view('Exercises.index', ['exercises' => $exercises]);
     }
 
     public function create()
     {
-        $textoView = "Nuevo ejercicio";
-        $controller = route('Exercises.store');
-        return view('Exercises.new', ['controller' => $controller, 'textoView' => $textoView]);
-
+        try {
+            $textoView = "Nuevo ejercicio";
+            $controller = route('Exercises.store');
+            return response()->json(['controller' => $controller, 'textoView' => $textoView], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error preparing new exercise: ' . $e->getMessage()], 500);
+        }
     }
 
     public function store(Request $request)
     {
-
         $request->validate([
             'name' => 'required|string',
             'description' => 'required|string',
@@ -46,56 +51,70 @@ class ExerciseController extends Controller
             $exercise->duration = $request->input('duration');
             $exercise->save();
 
-            return redirect()->route('Exercises.index')->with('success', 'Ejercicio creado correctamente');
+            return response()->json(['success' => 'Ejercicio creado correctamente', 'exercise' => $exercise], 201);
         } catch (\Exception $e) {
-            return redirect()->back()->withInput()->withErrors(['error' => 'Error al crear el ejercicio: ' . $e->getMessage()]);
+            return response()->json(['error' => 'Error al crear el ejercicio: ' . $e->getMessage()], 500);
         }
-
     }
+
     public function edit($id)
     {
-        $exercise = Exercise::find($id);
-        $action = 'PUT';
-        $textoView = "Editar ejercicio";
-        $controller = route('Exercises.update', ['id' => $id]);
-        return view('Exercises.new', ['exercise' => $exercise, 'controller' => $controller, 'action' => $action, 'textoView' => $textoView]);
+        try {
+            $exercise = Exercise::find($id);
+            if (!$exercise) {
+                return response()->json(['error' => 'Ejercicio no encontrado'], 404);
+            }
+            $action = 'PUT';
+            $textoView = "Editar ejercicio";
+            $controller = route('Exercises.update', ['id' => $id]);
+
+            return response()->json(['exercise' => $exercise, 'controller' => $controller, 'action' => $action, 'textoView' => $textoView], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error al preparar la edición del ejercicio: ' . $e->getMessage()], 500);
+        }
     }
 
-    //Falta comprobacion de que de que se esta actualizando el ejercicio adecuado
     public function update(Request $request, $id)
     {
         $request->validate([
             'name' => 'required|string',
             'description' => 'required|string',
             'repetitions' => 'required|string',
-            'duracion' => 'required|string',
+            'duration' => 'required|string',
         ]);
+
         try {
             $exercise = Exercise::findOrFail($id);
 
             $exercise->name = $request->input('name');
-            $exercise->description = $request->input('descripcion');
-            $exercise->repeticiones = $request->input('repetitions');
-            $exercise->duracion = $request->input('duracion');
+            $exercise->description = $request->input('description');
+            $exercise->repetitions = $request->input('repetitions');
+            $exercise->duration = $request->input('duration');
             $exercise->save();
 
-            return redirect()->route('Exercises.index')->with('success', 'Ejercicio actualizado correctamente');
+            return response()->json(['success' => 'Ejercicio actualizado correctamente', 'exercise' => $exercise], 200);
         } catch (\Exception $e) {
-            return redirect()->back()->withInput()->withErrors(['error' => 'Error al actualizar el ejercicio: ' . $e->getMessage()]);
+            return response()->json(['error' => 'Error al actualizar el ejercicio: ' . $e->getMessage()], 500);
         }
     }
+
     public function destroy($id)
     {
-        $exercise = Exercise::find($id);
+        try {
+            $exercise = Exercise::find($id);
 
-        if (!$exercise) {
-            return redirect()->route('Exercises.index')->with('error', 'Ejercicio no encontrado');
-        }
-        if ($exercise->user_id == auth()->user()->id || auth()->user()->role == 'admin') {
-            $exercise->delete();
-            return redirect()->route('Exercises.index')->with('success', 'Ejercicio eliminado correctamente');
-        }
-        return redirect()->route('Exercises.index')->with('error', 'Ejercicio no tienes permisos para eliminar ese ejercicio');
+            if (!$exercise) {
+                return response()->json(['error' => 'Ejercicio no encontrado'], 404);
+            }
 
+            if ($exercise->user_id == auth()->user()->id || auth()->user()->role == 'admin') {
+                $exercise->delete();
+                return response()->json(['success' => 'Ejercicio eliminado correctamente'], 200);
+            } else {
+                return response()->json(['error' => 'No tienes permisos para eliminar este ejercicio'], 403);
+            }
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error al intentar borrar el ejercicio: ' . $e->getMessage()], 500);
+        }
     }
 }

@@ -1,62 +1,66 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Exercise;
 use App\Models\Training;
-USE Illuminate\Support\Facades\Auth;
-//Entrenamientos
+use Illuminate\Support\Facades\Auth;
+
 class TrainingController extends Controller
 {
     public function index()
     {
-      //  if(Auth::check() && auth()->user()->role == "training"){
-
-        $training = Training::all();
-        return view('Training.index', ['trainings' => $training]);
-        
-        //}
-        return view('index');
-
+        try {
+            $trainings = Training::all();
+            return response()->json(['trainings' => $trainings], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error fetching trainings: ' . $e->getMessage()], 500);
+        }
     }
 
     public function new()
     {
-        //if(Auth::check() && auth()->user()->role == "training"){
-
+        try {
             $titel = "Nuevo entrenamiento";
             $controller = route('Trainings.store');
             $exercisesInTraining = [];
             $exercisesWithoutTraining = Exercise::all();
 
-            return view('Training.new', ['titel' => $titel, 'controller' => $controller, 'exercisesInTraining' => $exercisesInTraining, 'exercisesWithoutTraining' => $exercisesWithoutTraining], ['js' => ['tableChanges.js']]);
-        //}
-      return view('index');
-
+            return response()->json([
+                'titel' => $titel,
+                'controller' => $controller,
+                'exercisesInTraining' => $exercisesInTraining,
+                'exercisesWithoutTraining' => $exercisesWithoutTraining,
+                'js' => ['tableChanges.js']
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error preparing new training: ' . $e->getMessage()], 500);
+        }
     }
+
     public function edit($id)
     {
-        // En id hay que hace comprobaciones
-
-        $titel = "Editando entrenamiento";
-        $controller = route('Trainings.store');
         try {
+            $titel = "Editando entrenamiento";
+            $controller = route('Trainings.store');
             $training = Training::findOrFail($id);
-            $idTraining = $id;
-
             $exercisesInTraining = $training->exercises;
             $exercisesWithoutTraining = Exercise::all()->diff($exercisesInTraining);
 
-            return view('Training.new', ['training' => $training, 'titel' => $titel, 'controller' => $controller, 'id_training' => $idTraining, 'exercisesInTraining' => $exercisesInTraining, 'exercisesWithoutTraining' => $exercisesWithoutTraining], ['js' => ['tableChanges.js']]);
-
-
+            return response()->json([
+                'training' => $training,
+                'titel' => $titel,
+                'controller' => $controller,
+                'id_training' => $id,
+                'exercisesInTraining' => $exercisesInTraining,
+                'exercisesWithoutTraining' => $exercisesWithoutTraining,
+                'js' => ['tableChanges.js']
+            ], 200);
         } catch (\Exception $e) {
-            return redirect()->back()->withInput()->withErrors(['errors' => 'Error al editar Entrenamiento: ' . $e->getMessage()]);
+            return response()->json(['error' => 'Error editing training: ' . $e->getMessage()], 500);
         }
-
     }
-    //Guardado de entrenamientos
+
     public function store(Request $request)
     {
         $request->validate([
@@ -64,68 +68,60 @@ class TrainingController extends Controller
             'dia' => ['required', 'string', 'in:Lunes,Martes,Miércoles,Jueves,Viernes,Sábado,Domingo'],
         ]);
 
-        //Limpiando codigo, hacer una fucion para limpiar todas las request primero, para el resto de controllers importante
         $nameTraining = htmlspecialchars(strip_tags($request->input('nameTraining')));
         $dia = ucfirst($request->input('dia'));
         $trainingId = ucfirst($request->input('id_training'));
 
         try {
-
             if ($trainingId == "New") {
                 $training = new Training();
             } else {
                 $training = Training::findOrFail($trainingId);
             }
+
             $training->name = $nameTraining;
             $training->day = $dia;
             $training->trainer_id = auth()->user()->id;
             $training->save();
 
-            //En un futuro comprobar que los ejercicios son los de los propios entrenador
-            // Asociar ejercicios al entrenamiento 
-
-
-            //Compruebo el insertatdo de ejercicios
             if ($request->has('exercisesInTraining')) {
                 $exercisesIds = explode(';', $request->input('exercisesInTraining'));
                 $training->exercises()->sync($exercisesIds);
-
             }
-            //Compruebo los ejercicios que voy a quitar
+
             if ($request->has('exercisesWithoutTraining')) {
                 $exercisesIds = explode(';', $request->input('exercisesWithoutTraining'));
-                $exercisesIds = array_unique($exercisesIds); // Eliminar duplicados
+                $exercisesIds = array_unique($exercisesIds);
                 foreach ($exercisesIds as $exerciseId) {
-                    //Compruebo si existe el ejercicio en el entreno
                     if ($training->exercises->contains($exerciseId)) {
                         $training->exercises()->detach($exerciseId);
                     }
                 }
             }
-            return redirect()->route('Trainings.index')->with('success', 'Entrenamiento creado correctamente');
+
+            return response()->json(['success' => 'Entrenamiento creado correctamente'], 200);
         } catch (\Exception $e) {
-            return redirect()->back()->withInput()->withErrors(['errors' => 'Error al guardar el entrenamiento: ' . $e->getMessage()]);
+            return response()->json(['error' => 'Error al guardar el entrenamiento: ' . $e->getMessage()], 500);
         }
     }
+
     public function destroy($id)
     {
-        $training = Training::find($id);
+        try {
+            $training = Training::find($id);
 
-        if (!$training) {
-            return redirect()->route('Trainings.index')->with('error', 'Entrenamiento no encontrado');
-        }
-
-        if ($training->trainer_id == auth()->user()->id || auth()->user()->role == 'admin') {
-
-            try {
-                $training->delete();
-                return redirect()->route('Trainings.index')->with('success', 'Entrenamiento borrado correctamente');
-            } catch (\Exception $e) {
-                return redirect()->back()->withInput()->withErrors(['errors' => 'Error al intentar borrar el entrenamiento: ' . $e->getMessage()]);
+            if (!$training) {
+                return response()->json(['error' => 'Entrenamiento no encontrado'], 404);
             }
 
+            if ($training->trainer_id == auth()->user()->id || auth()->user()->role == 'admin') {
+                $training->delete();
+                return response()->json(['success' => 'Entrenamiento borrado correctamente'], 200);
+            } else {
+                return response()->json(['error' => 'No tienes permisos para borrar este entrenamiento'], 403);
+            }
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error al intentar borrar el entrenamiento: ' . $e->getMessage()], 500);
         }
-        return redirect()->route('Trainings.index')->with('error', 'Entrenamiento no tienes permisos para borrar este entrenamiento');
-
     }
 }
